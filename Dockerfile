@@ -1,70 +1,48 @@
-# Use the official Python image
-FROM python:3.8-slim
+# Use an ARM-compatible base image
+FROM debian:bullseye-slim
 
-# Install necessary packages and dependencies for Google Chrome
-RUN apt-get update && apt-get install -y \
-    wget \
-    gnupg \
-    unzip \
-    curl \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Download and install Google Chrome
-RUN wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && \
-    dpkg -i google-chrome-stable_current_amd64.deb; apt-get -fy install && \
-    rm google-chrome-stable_current_amd64.deb
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y wget gnupg2 unzip curl apt-transport-https ca-certificates software-properties-common
 
-# Detect the architecture and ChromeDriver version
-RUN arch=$(dpkg --print-architecture) && \
-    echo "Detected architecture: $arch" && \
-    echo $arch > /arch.txt && \
-    CHROMEDRIVER_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE) && \
-    echo "ChromeDriver version: $CHROMEDRIVER_VERSION" && \
-    echo $CHROMEDRIVER_VERSION > /chromedriver_version.txt
+# Install OpenJDK 11
+RUN apt-get update && \
+    apt-get install -y openjdk-11-jre-headless
 
-# Download ChromeDriver for amd64
-RUN arch=$(cat /arch.txt) && \
-    CHROMEDRIVER_VERSION=$(cat /chromedriver_version.txt) && \
-    echo "Downloading ChromeDriver for amd64, version: $CHROMEDRIVER_VERSION" && \
-    wget -N https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux64.zip
+# Install Python 3.9 and pip
+RUN apt-get update && \
+    apt-get install -y python3.9 python3-pip
 
-# Download ChromeDriver for arm64
-RUN arch=$(cat /arch.txt) && \
-    CHROMEDRIVER_VERSION=$(cat /chromedriver_version.txt) && \
-    echo "Downloading ChromeDriver for arm64, version: $CHROMEDRIVER_VERSION" && \
-    wget -N https://chromedriver.storage.googleapis.com/$CHROMEDRIVER_VERSION/chromedriver_linux_arm64.zip
+# Install Chromium and Chromedriver
+RUN apt-get update && \
+    apt-get install -y chromium chromium-driver
 
-# Unzip and install ChromeDriver for amd64
-RUN arch=$(cat /arch.txt) && \
-    if [ "$arch" = "amd64" ]; then \
-        echo "Unzipping ChromeDriver for amd64" && \
-        unzip chromedriver_linux64.zip && \
-        mv chromedriver /usr/bin/chromedriver && \
-        rm chromedriver_linux64.zip; \
-    fi
+# Download Selenium server standalone
+RUN mkdir -p /opt/selenium && \
+    wget -O /opt/selenium/selenium-server.jar https://github.com/SeleniumHQ/selenium/releases/download/selenium-4.1.0/selenium-server-4.1.0.jar
 
-# Unzip and install ChromeDriver for arm64
-RUN arch=$(cat /arch.txt) && \
-    if [ "$arch" = "arm64" ]; then \
-        echo "Unzipping ChromeDriver for arm64" && \
-        unzip chromedriver_linux_arm64.zip && \
-        mv chromedriver /usr/bin/chromedriver && \
-        rm chromedriver_linux_arm64.zip; \
-    fi
-
-# Set permissions for ChromeDriver
-RUN chown root:root /usr/bin/chromedriver && chmod +x /usr/bin/chromedriver
-
-# Copy the requirements.txt file and install Python dependencies
+# Install Python dependencies
 COPY requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
+
+# Copy the current directory contents into the container at /app
+COPY . /app
+
+# Set the working directory to /app
 WORKDIR /app
-RUN echo "Contents of requirements.txt:" && cat requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the Selenium script
-COPY youtubepull.py /app/youtubepull.py
+# Copy the custom start script
+COPY start-selenium.sh /app/start-selenium.sh
 
-# Set the entry point to run the Python script
-ENTRYPOINT ["python", "youtubepull.py"]
+# Make the script executable
+RUN chmod +x /app/start-selenium.sh
+
+# Define environment variable
+ENV PYTHONPATH=/app
+
+# Run the custom start script
+CMD ["/app/start-selenium.sh"]

@@ -1,0 +1,11 @@
+services:
+  selenium:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: selenium
+    volumes:
+      - .:/usr/src/app
+    ports:
+      - "4444:4444"
+
